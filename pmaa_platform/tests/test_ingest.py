@@ -144,3 +144,49 @@ def _a23d():
     eq(p2.is_amino_sugar, False, "非氨基糖")
     p3 = parse_pmaa_name("2,3,4-Fuc")
     eq(p3.skeleton, "dHex", "Fuc 应判为 6-脱氧己糖")
+
+
+@case("A23e", "名称解析：支持 CCRC 的 T-、p/f 与 NAc 后缀")
+def _a23e():
+    from pmaa.ingest.importer import _parse_source_linkage
+
+    terminal = parse_pmaa_name("T-Galp")
+    eq(terminal.parent_sugar, "Gal", "Galp 应规范为 Gal")
+    eq(terminal.default_ring, "p", "p 后缀应保留吡喃型")
+    eq(terminal.o_methyl_positions, [2, 3, 4, 6], "terminal Galp 应展开全部 O-甲基位")
+
+    ribf = parse_pmaa_name("2,3,5-Ribf")
+    eq(ribf.parent_sugar, "Rib", "Ribf 应规范为 Rib")
+    eq(ribf.skeleton, "Pen", "Ribf 应识别为戊糖")
+    eq(ribf.default_ring, "f", "f 后缀应保留呋喃型")
+
+    amino = parse_pmaa_name("3-GalpNAc")
+    eq(amino.parent_sugar, "Gal", "GalpNAc 应规范为 Gal")
+    eq(amino.n_modifications, ["C2:N-acetyl"], "NAc 后缀应显式记录 C2 N-乙酰")
+    eq(amino.o_methyl_positions, [3], "C2 不得误计为 O-甲基")
+
+    terminal_amino = parse_pmaa_name("T-GlcpNAc")
+    eq(terminal_amino.o_methyl_positions, [3, 4, 6],
+       "terminal GlcpNAc 应展开 O 位并剔除 C2 N 位")
+    eq(_parse_source_linkage("1,2,4,6-GalpNAc", frozenset({2})), [4, 6],
+       "源表 NAc 位不得误判为糖苷连接位")
+
+
+@case("A23f", "残基来源映射重导仅替换当前源行")
+def _a23f():
+    from pmaa.data import repositories as repo
+
+    did = "Hex|OMe:2,3,6|OAc:1,4,5|label:test"
+    repo.DerivativeRepo.upsert(
+        did, skeleton="Hex", o_methyl=[2, 3, 6], o_acetyl=[1, 4, 5],
+        label_key="test", display_name="test derivative",
+    )
+    for source_id, sugar in (("source-record-a", "Gal"), ("source-record-b", "Glc")):
+        repo.ResidueMappingRepo.add(
+            did, framework_id="Hex_p", parent_sugar=sugar, ring_form="p",
+            linkage_positions=[4], precondition="test", source_record_id=source_id,
+        )
+    repo.ResidueMappingRepo.clear_for_source_record(did, "source-record-a")
+    remaining = repo.ResidueMappingRepo.by_derivative(did)
+    eq(len(remaining), 1, "只应保留另一源行贡献的映射")
+    eq(remaining[0].source_record_id, "source-record-b", "不得跨来源误删")

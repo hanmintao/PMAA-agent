@@ -21,6 +21,13 @@ pmaa_platform/data/*.sqlite3
 # ----- Runtime uploads (user-submitted files, not source) -----
 pmaa_platform/data/uploads/
 
+# ----- DB backups (.bak.* snapshots, not source) -----
+pmaa_platform/data/*.bak*
+pmaa_platform/data/backups/
+
+# ----- Runtime process files -----
+pmaa_platform/.run/
+
 # ----- WorkBuddy local memory (personal notes, do not publish) -----
 .workbuddy/
 

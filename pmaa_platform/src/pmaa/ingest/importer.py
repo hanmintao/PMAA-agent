@@ -121,8 +121,14 @@ def _ion_from_cell(mz: float, cell) -> Ion | None:
     return None
 
 
-def _parse_source_linkage(raw: str | None) -> list[int] | None:
-    """解析源表"连接方式"列，如 "1,3,4,6-Gal" → [3,4,6]（去掉异头碳 1 与糖名）。"""
+def _parse_source_linkage(raw: str | None,
+                          n_positions: frozenset[int] = frozenset()) -> list[int] | None:
+    """
+    解析源表“连接方式”列，如 "1,3,4,6-Gal" → [3,4,6]。
+
+    氨基糖表格有时把 C2 NAc 也列在“非 O-甲基位”中；C2 是 N-取代位，
+    不能据此解释为糖苷受体连接位，因此与异头碳 1 一并从连接比较中剔除。
+    """
     if not raw:
         return None
     head = raw.split("-")[0]
@@ -133,7 +139,7 @@ def _parse_source_linkage(raw: str | None) -> list[int] | None:
             nums.append(int(part))
     if not nums:
         return None
-    return [n for n in nums if n != 1]
+    return [n for n in nums if n != 1 and n not in n_positions]
 
 
 # ---------------------------------------------------------------------- 主流程
@@ -304,9 +310,10 @@ class EISummaryTableImporter:
         if layout.linkage_col:
             lc = dump.cell(row, layout.linkage_col)
             raw_linkage = str(lc.value).strip() if lc else None
-        src_linkage = _parse_source_linkage(raw_linkage)
+        src_linkage = _parse_source_linkage(raw_linkage, n_pos)
         linkage_conflict = False
-        if src_linkage is not None and derived_linkage and sorted(src_linkage) != sorted(derived_linkage):
+        if (src_linkage is not None and framework_id is not None
+                and sorted(src_linkage) != sorted(derived_linkage)):
             linkage_conflict = True
             problems.append({
                 "code": StableErrorCode.SOURCE_LINKAGE_CONFLICT.value,
@@ -330,7 +337,9 @@ class EISummaryTableImporter:
             res.status = "isolated"
             res.error_codes = sorted({p["code"] for p in hard})
         else:
-            res.status = "quarantined" if parsed.is_amino_sugar else "imported"
+            # 氨基糖专项分支或源表连接标注冲突都进入隔离复核；仍保留为候选，
+            # 但不得伪装成普通 reference_only 条目自动影响高置信结果。
+            res.status = "quarantined" if (parsed.is_amino_sugar or linkage_conflict) else "imported"
 
         res.derived_linkage = derived_linkage
         res.source_linkage_raw = raw_linkage
@@ -408,7 +417,7 @@ class EISummaryTableImporter:
             )
             origins = map_from_derivative(skeleton, parsed.o_methyl_positions, o_acetyl, n_pos)
             if origins:
-                repo.ResidueMappingRepo.clear_for_derivative(did)
+                repo.ResidueMappingRepo.clear_for_source_record(did, record_id)
             for oc in origins:
                 repo.ResidueMappingRepo.add(
                     did, framework_id=oc.framework.id, parent_sugar=parsed.parent_sugar,

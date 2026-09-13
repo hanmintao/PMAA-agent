@@ -43,7 +43,7 @@ python -m pmaa.cli serve --port 8000
 ### 运行验收用例
 
 ```bash
-python tests/run_all.py       # 100 项：03/04 契约 + API、提取与数据隔离回归
+python tests/run_all.py       # 102 项：03/04 契约 + API、提取与数据隔离回归
 ```
 
 ---
@@ -137,7 +137,7 @@ pmaa_platform/
 │   ├── reporting/           报告构建与 HTML/JSON 导出
 │   └── cli.py               命令行入口
 ├── web/                     前端工作台（原生 ES + CSS，无构建步骤）
-├── tests/                   验收用例（100 项）
+├── tests/                   验收用例（102 项）
 ├── data/                    SQLite 数据库（默认）与上传文件存放区
 ├── scripts/launcher.sh      一键启动器实现（.command 与 .app 共用）
 ├── 启动平台.command          双击启动
@@ -208,17 +208,19 @@ PYTHONPATH=src uvicorn pmaa.api.main:app --host 0.0.0.0 --port 8000 --workers 4
 - [与四份设计文件差异审计](docs/05_与四份设计文件差异审计.md) —— 已修复缺陷、真实缺口和优先级
 - [真实文件端到端验收](docs/06_真实文件端到端验收.md) —— `.doc`/PNG 实跑、可用与不可用功能分级
 - [候选排序误诊整改与验收](docs/07_候选排序误诊整改与验收.md) —— 复盘纠偏、算法边界、真实谱回放与启动一致性
+- [CCRC 强峰参考库更新验收](docs/08_CCRC强峰参考库更新验收.md) —— 新工作簿解析、旧库替换、冲突隔离与回滚信息
 
 ---
 
 ## 6. 当前状态
 
-软件可运行，当前自动化验收为 **100/100**；这只证明已覆盖的代码行为，**不等于科学性能或
+软件可运行，当前自动化验收为 **102/102**；这只证明已覆盖的代码行为，**不等于科学性能或
 真实 LLM 已验证**。当前定位为 V0.1+ / V0.2 研究原型。除实验工作包 L01–L08 未开始外，
 原始 GC–MS、报告 PDF/XLSX 导出、权限与备份、校准数据管理、真实知识检索和真实 LLM 对照仍需开发。
 
-参考库条目来自课程课件汇总表（E2 级），未经本地标准实测，因此条目默认状态为
-`reference_only`，不可支撑 `derivative_identity_level = confirmed`。
+当前参考库已更新为 CCRC 标注峰及全部强峰版，共 122 条：83 条 `reference_only`、
+39 条 `quarantined`（含 30 条氨基糖专项复核和 12 条源表连接标注冲突；两类有 3 条重叠）。
+条目仍按 E2 级管理，未经本地标准实测，因此不可支撑 `derivative_identity_level = confirmed`。
 正式放行需完成计划第 9 节的实验验证。详细核对见
 [docs/04_开发计划完成度核对.md](docs/04_开发计划完成度核对.md)及
-[docs/05_与四份设计文件差异审计.md](docs/05_与四份设计文件差异审计.md)。
+[docs/08_CCRC强峰参考库更新验收.md](docs/08_CCRC强峰参考库更新验收.md)。

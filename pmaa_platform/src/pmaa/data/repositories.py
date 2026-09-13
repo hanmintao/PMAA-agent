@@ -59,6 +59,18 @@ class SourceFileRepo:
         with db.session_scope() as s:
             return list(s.scalars(select(db.SourceFile).order_by(db.SourceFile.imported_at.desc())))
 
+    @staticmethod
+    def mark_superseded(file_id: str, *, superseded_by: str, actor: str = "system") -> None:
+        """保留旧来源审计行，只标记其已被哪个新来源替代。"""
+        with db.session_scope() as s:
+            row = s.get(db.SourceFile, file_id)
+            if row is None:
+                raise NotFoundError(f"源文件不存在: {file_id}")
+            row.meta = {**(row.meta or {}), "superseded_by": superseded_by}
+            s.add(row)
+        audit("source_file", file_id, "mark_superseded",
+              {"superseded_by": superseded_by}, actor)
+
 
 # ====================================================================== 参考库
 class ReferenceRepo:
@@ -129,6 +141,35 @@ class ReferenceRepo:
             return s.scalar(select(func.count(db.ReferenceRecordRow.id))) or 0
 
     @staticmethod
+    def delete_by_source_file(source_file_id: str, *, actor: str = "system") -> dict[str, int]:
+        """精确撤下某一来源的参考记录，同时清理其离子与来源映射。
+
+        SourceFile 本身保留，便于追溯、标记 superseded_by 和恢复备份。
+        """
+        with db.session_scope() as s:
+            record_ids = list(s.scalars(select(db.ReferenceRecordRow.id).where(
+                db.ReferenceRecordRow.source_file_id == source_file_id)))
+            if not record_ids:
+                return {"records": 0, "ions": 0, "mappings": 0}
+            ion_count = s.scalar(select(func.count(db.ReferenceIonRow.id)).where(
+                db.ReferenceIonRow.record_id.in_(record_ids))) or 0
+            mapping_count = s.scalar(select(func.count(db.ResidueMappingRow.id)).where(
+                db.ResidueMappingRow.source_record_id.in_(record_ids))) or 0
+            s.execute(delete(db.ResidueMappingRow).where(
+                db.ResidueMappingRow.source_record_id.in_(record_ids)))
+            s.execute(delete(db.ReferenceIonRow).where(
+                db.ReferenceIonRow.record_id.in_(record_ids)))
+            s.execute(delete(db.ReferenceRecordRow).where(
+                db.ReferenceRecordRow.id.in_(record_ids)))
+            counts = {
+                "records": len(record_ids),
+                "ions": int(ion_count),
+                "mappings": int(mapping_count),
+            }
+        audit("source_file", source_file_id, "reference_records_withdrawn", counts, actor)
+        return counts
+
+    @staticmethod
     def set_review_status(record_id: str, status: str, *, reason: str | None = None, actor: str = "system"):
         with db.session_scope() as s:
             row = s.get(db.ReferenceRecordRow, record_id)
@@ -189,6 +230,15 @@ class ResidueMappingRepo:
         with db.session_scope() as s:
             s.execute(delete(db.ResidueMappingRow).where(
                 db.ResidueMappingRow.derivative_id == derivative_id))
+
+    @staticmethod
+    def clear_for_source_record(derivative_id: str, source_record_id: str):
+        """幂等重导当前源行，但不抹掉其他源行贡献的相容原残基来源。"""
+        with db.session_scope() as s:
+            s.execute(delete(db.ResidueMappingRow).where(
+                db.ResidueMappingRow.derivative_id == derivative_id,
+                db.ResidueMappingRow.source_record_id == source_record_id,
+            ))
 
     @staticmethod
     def by_derivative(derivative_id: str) -> list[db.ResidueMappingRow]:

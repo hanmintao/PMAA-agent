@@ -166,7 +166,7 @@ DEFAULT_MZ_RANGE = (40.0, 350.0)
 # ---------------------------------------------------------------- 版本
 RULE_VERSION = "rules_v1.1.0"
 PROMPT_VERSION = "prompt_v1.0.0"
-PARSER_VERSION = "xlsx_parser_v1.0.0"
+PARSER_VERSION = "xlsx_parser_v1.1.0"
 LLM_SCHEMA_VERSION = "1.0"
 IMPORT_SCHEMA_VERSION = "import_v1.0.0"
 
