@@ -109,6 +109,21 @@ main { padding: 22px 24px 60px; max-width: 1400px; margin: 0 auto; }
 }
 .card > h2 { font-size: 15px; margin-bottom: 4px; }
 .card > .hint { color: var(--text-3); font-size: 12.5px; margin: 0 0 14px; }
+.advanced {
+  margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: #fafcfe;
+}
+.advanced > summary {
+  cursor: pointer; padding: 10px 12px; color: var(--text-2); font-size: 12.5px;
+  font-weight: 650; list-style-position: inside;
+}
+.advanced > summary:hover { color: var(--accent); }
+.advanced-body { padding: 2px 14px 14px; border-top: 1px solid var(--border); }
+.primary-meta {
+  display: grid; grid-template-columns: minmax(180px, 240px) minmax(240px, 1fr);
+  gap: 12px; margin: 12px 0;
+}
+@media (max-width: 720px) { .primary-meta { grid-template-columns: 1fr; } }
 .grid { display: grid; gap: 14px; }
 .g2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }

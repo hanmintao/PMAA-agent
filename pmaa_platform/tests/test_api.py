@@ -547,8 +547,13 @@ def _doc05d():
     page = c.get("/")
     script = c.get("/app.js")
     eq(page.status_code, 200, "平台首页应可读取")
-    ok("multispectrum-2" in page.text, "app.js 必须带缓存版本，避免浏览器继续使用旧界面")
+    ok("simple-3step-1" in page.text, "app.js 必须带缓存版本，避免浏览器继续使用旧界面")
     eq(script.status_code, 200, "前端脚本应可读取")
+    ok("上传文件" in script.text and "检查谱图与峰" in script.text and "查看结果" in script.text,
+       "主流程必须是三步简化版")
+    ok("runSimplifiedAnalysis" in script.text and "go('import')" in script.text,
+       "确认峰后必须自动解析，并从上传页启动")
+    ok("LLM 配置" in page.text, "LLM 配置必须保留在顶部")
     for token in ('id="x_prev"', 'id="x_next"', "async function switchImage", "下一张 →"):
         ok(token in script.text, f"多图切换界面必须包含 {token}")
 

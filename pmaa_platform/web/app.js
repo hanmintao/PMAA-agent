@@ -43,10 +43,10 @@ const LEVEL_CLASS = {
 };
 const badge = v => `<span class="badge ${LEVEL_CLASS[v] || 'b-mute'}">${esc(v ?? '—')}</span>`;
 
-/* ============================================================ 向导状态机
-   七步串行：上一步的产出自动成为下一步的输入，未完成则下一步锁定。
-   修改上游会把下游标记为「已过期」——不静默保留旧结论，也不能跳过重跑。
-   参考库 / LLM 配置是旁路，随时可进，不参与门禁。
+/* ============================================================ 工作流状态
+   普通用户只看到三步：上传 → 检查峰 → 结果。
+   原有样本/方法/审核/QC/RI 能力保留为后台或高级入口，不再构成强制门禁。
+   LLM 配置按用户要求继续保留在顶部原位置。
 -------------------------------------------------------------------------- */
 const STEPS = [
   { key: 'sample',     n: 1, title: '建档',       sub: '样品 · 方法 · 还原标签' },
@@ -56,6 +56,11 @@ const STEPS = [
   { key: 'match',      n: 5, title: '谱图比对',   sub: '参考库检索 · 证据清单' },
   { key: 'candidates', n: 6, title: '候选结构',   sub: 'PMAA 与来源残基' },
   { key: 'ai',         n: 7, title: 'AI 评议',    sub: '最相关项 · 理由 · 采纳' },
+];
+const SIMPLE_STEPS = [
+  { key: 'import', n: 1, title: '上传文件', sub: 'Word · 图片 · 峰表' },
+  { key: 'extract', n: 2, title: '检查谱图与峰', sub: '切图 · 校准 · 增删峰' },
+  { key: 'candidates', n: 3, title: '查看结果', sub: 'PMAA · 连接方式 · 证据' },
 ];
 /* 每一步负责写入的数据键 */
 const STEP_KEY = ['sample', 'file', 'peaks', 'review', 'analysis', 'candidates', 'assessment'];
@@ -105,11 +110,15 @@ function invalidateFrom(i) {
 function renderSteps() {
   const box = $('#stepsMain');
   if (!box) return;
-  box.innerHTML = STEPS.map((s, i) => {
-    const d = stepDone(i), lock = !canEnter(i);
-    const cur = i === WIZ.idx && !BYPASS.includes(state.view);
+  const active = state.view === 'import' ? 0 : state.view === 'extract' ? 1
+    : ['candidates', 'ai', 'finish', 'library', 'ristd'].includes(state.view) ? 2 : -1;
+  const done = [!!WIZ.data.file, !!WIZ.data.peaks, !!WIZ.data.analysis];
+  box.innerHTML = SIMPLE_STEPS.map((s, i) => {
+    const d = done[i];
+    const lock = (i === 1 && !done[0]) || (i === 2 && !done[2]);
+    const cur = i === active && !BYPASS.includes(state.view);
     const cls = ['step', lock ? 'locked' : d ? 'ok' : '', cur ? 'active' : '',
-                 WIZ.stale[i] ? 'stale' : ''].filter(Boolean).join(' ');
+                 ''].filter(Boolean).join(' ');
     return `<button class="${cls}" data-view="${s.key}" title="${esc(s.sub)}">
       <span class="sn">${d && !WIZ.stale[i] ? '✓' : s.n}</span>
       <span class="st"><b>${esc(s.title)}</b><i>${esc(s.sub)}</i></span></button>`;
@@ -119,36 +128,24 @@ function renderSteps() {
 function renderWizBar() {
   const bar = $('#wizbar');
   if (!bar) return;
-  if (BYPASS.includes(state.view)) { bar.classList.remove('show'); bar.innerHTML = ''; return; }
-  const i = WIZ.idx, prev = i > 0 ? STEPS[i - 1] : null, next = i < STEPS.length - 1 ? STEPS[i + 1] : null;
-  const ok = stepDone(i);
-  bar.classList.add('show');
-  bar.innerHTML = `
-    <div class="wb-side">${prev ? `<button class="btn sec" id="wb_prev">← ${esc(prev.title)}</button>`
-                                : '<span class="hint">流程起点</span>'}</div>
-    <div class="wb-mid">第 <b>${STEPS[i].n}</b> / ${STEPS.length} 步 · ${esc(STEPS[i].title)}
-      <span class="tag ${ok ? 'ok' : ''}">${ok ? '已完成' : '待完成'}</span>
-      ${WIZ.stale[i] ? '<span class="tag warn">上游已改，需重跑</span>' : ''}</div>
-    <div class="wb-side right">${next
-      ? `<button class="btn" id="wb_next" ${ok ? '' : 'disabled'}>${esc(next.title)} →</button>`
-      : `<button class="btn" id="wb_finish" ${ok ? '' : 'disabled'}>完成流程</button>`}</div>`;
-  const p = $('#wb_prev'); if (p) p.onclick = () => go(prev.key);
-  const n = $('#wb_next'); if (n) n.onclick = () => go(next.key);
-  const f = $('#wb_finish'); if (f) f.onclick = () => viewFinish();
+  bar.classList.remove('show');
+  bar.innerHTML = '';
 }
 
 /* ------------------------------------------------------------ 视图路由 */
 const VIEWS = { sample: viewSample, import: viewImport, extract: viewExtract,
   peaks: viewPeakReview, match: viewMatch, candidates: viewCandidates, ai: viewAI,
-  library: viewLibrary, providers: viewProviders, ristd: viewRIStd };
+  finish: viewFinish, library: viewLibrary, providers: viewProviders, ristd: viewRIStd };
 
 function go(view) {
-  const i = STEPS.findIndex(s => s.key === view);
-  if (i >= 0) {
-    const b = firstBlocker(i);
-    if (b >= 0) { toast(`请先完成第 ${STEPS[b].n} 步「${STEPS[b].title}」`, true); return; }
-    WIZ.idx = i;
+  if (view === 'extract' && !WIZ.data.file) {
+    toast('请先上传谱图、文档或峰表', true); return;
   }
+  if (view === 'candidates' && !WIZ.data.analysis) {
+    toast('请先完成峰检查并运行解析', true); return;
+  }
+  const i = STEPS.findIndex(s => s.key === view);
+  if (i >= 0) WIZ.idx = i;
   state.view = view;
   renderSteps();
   VIEWS[view]?.();
@@ -281,8 +278,7 @@ async function loadSamples() {
 
 /* ============================================================ ② 数据导入 */
 async function viewImport() {
-  const [fmt, samples, methods] = await Promise.all([
-    api('/imports/formats'), api('/samples'), api('/methods')]);
+  const fmt = await api('/imports/formats');
   const MB = (fmt.max_upload_bytes / 1048576).toFixed(0);
   const kindName = k => ({
     ei_reference_table: 'EI 质谱汇总表', peak_table: '峰表 / 结构化输入',
@@ -290,32 +286,43 @@ async function viewImport() {
   }[k] || k);
   $('#main').innerHTML = `
   <div class="card">
-    <h2>② 导入文件</h2>
+    <h2>① 上传文件</h2>
     <div id="u_gate"></div>
-    <p class="hint">选择本机文件即可导入，<b>一个入口吃下所有格式</b>：xlsx/xlsm 走 EI 汇总表导入，
-      csv/tsv/json 走峰表，<b>图片 / PDF / Word 会自动进入「⊕ 谱图提取」做人工校准</b>。
-      文件按内容哈希去重保存，<b>不覆盖原文</b>；单个文件上限 ${MB} MB；<b>压缩包不自动展开</b>。</p>
+    <p class="hint">上传 Word、PDF、质谱图片或仪器峰表。图片和文档会自动进入下一步检查，
+      文件按内容哈希保存且不覆盖原件；单个文件上限 ${MB} MB。</p>
+    <div class="primary-meta">
+      <div class="field"><label>还原试剂 *</label><select id="simple_label">
+        <option value="NaBD4" selected>NaBD₄（当前参考库）</option>
+        <option value="NaBH4">NaBH₄</option><option value="unknown">不确定</option>
+      </select></div>
+      <div class="field"><label>已检出单糖（可选，逗号分隔）</label>
+        <input id="simple_comp" placeholder="例如：Glc, Gal；没有结果可以留空"></div>
+    </div>
+    <div id="label_notice" class="note">当前参考库为 NaBD₄ 数据；还原试剂会随本次分析保存。</div>
     <div id="drop" class="dropzone">
       <div class="dz-icon">⇪</div>
       <div class="dz-main">把文件拖到这里，或 <button class="btn sec" id="pickBtn">选择文件</button></div>
       <div class="dz-sub">支持 ${fmt.supported_extensions.join(' · ')}</div>
       <input type="file" id="fileInput" hidden accept="${fmt.supported_extensions.join(',')}">
     </div>
-    <div class="row" style="margin-top:10px">
-      <div class="field" style="min-width:170px"><label>用途</label>
-        <select id="u_kind"><option value="">自动识别</option>
-          <option value="ei_reference_table">EI 质谱汇总表</option>
-          <option value="peak_table">峰表 / 定性离子表</option></select></div>
-      <div class="field" style="min-width:120px"><label>来源等级</label>
-        <select id="u_tier"><option>E2</option><option>E1</option><option>E3</option><option>E4</option><option>unreviewed</option></select></div>
-      <div class="field" style="min-width:150px"><label>绑定方法版本</label><input id="u_method" placeholder="可选，如 SP2380_v1"></div>
-      <label class="chk"><input type="checkbox" id="u_commit"> 直接入库（不勾选则只预览）</label>
-    </div>
     <div id="u_out"></div>
+    <details class="advanced">
+      <summary>管理员导入选项（普通分析无需打开）</summary>
+      <div class="advanced-body"><div class="row" style="margin-top:10px">
+        <div class="field" style="min-width:170px"><label>文件用途</label>
+          <select id="u_kind"><option value="">自动识别</option>
+            <option value="ei_reference_table">EI 参考数据库</option>
+            <option value="peak_table">峰表 / 定性离子表</option></select></div>
+        <div class="field" style="min-width:120px"><label>来源等级</label>
+          <select id="u_tier"><option>E2</option><option>E1</option><option>E3</option><option>E4</option><option>unreviewed</option></select></div>
+        <div class="field" style="min-width:150px"><label>方法版本 ID</label><input id="u_method" placeholder="可选"></div>
+        <label class="chk"><input type="checkbox" id="u_commit"> 将参考表提交入库</label>
+      </div></div>
+    </details>
   </div>
 
-  <div class="card">
-    <h2>支持的文件格式</h2>
+  <details class="advanced">
+    <summary>支持格式与文件安全说明</summary><div class="advanced-body">
     <p class="hint">导入时即固化输入模式，后续评分器不得切换。</p>
     <table><thead><tr><th>扩展名</th><th>用途</th><th>说明</th></tr></thead><tbody>
       ${fmt.formats.map(f => `<tr><td class="mono">${esc(f.extension)}</td>
@@ -324,10 +331,10 @@ async function viewImport() {
     </tbody></table>
     <div class="note warn" style="margin-top:10px">不接受：${fmt.rejected.archives.join(' · ')} —— ${esc(fmt.rejected.reason)}</div>
     <div style="font-size:12px;color:var(--text-3);margin-top:8px">${fmt.notes.map(n => `· ${esc(n)}`).join('<br>')}</div>
-  </div>
+  </div></details>
 
-  <div class="card">
-    <h2>或用服务端路径导入</h2>
+  <details class="advanced">
+    <summary>管理员：用服务端路径维护参考库</summary><div class="advanced-body">
     <p class="hint">文件已在服务器/挂载盘上时可直接给路径。识别合并单元格、字体/填充颜色与说明文字；颜色语义<b>不换算为强度</b>。</p>
     <div class="grid g2">
       <div class="field"><label>服务端可见的 xlsx 路径</label><input id="i_path" placeholder="可选；一般直接使用上方浏览器上传"></div>
@@ -335,10 +342,10 @@ async function viewImport() {
     </div>
     <div class="row"><button class="btn sec" id="i_preview">① 预览解析</button><button class="btn" id="i_commit">② 提交入库</button></div>
     <div id="i_out"></div>
-  </div>
+  </div></details>
 
-  <div class="card">
-    <h2>峰表 / 定性离子表</h2>
+  <details class="advanced">
+    <summary>高级：手工粘贴 JSON 峰表</summary><div class="advanced-body">
     <p class="hint">定性模式 ion 用 <code>marker</code>（<code>+</code> 或 <code>red</code>）；数值模式用 <code>intensity</code>。两种模式不可混用。</p>
     <div class="field"><label>峰表 JSON</label><textarea id="p_json">${esc(JSON.stringify({
       components: [{ component_id: 'peak_007', peak_label: 'P7', rt: 23.4, area: 12345,
@@ -346,12 +353,6 @@ async function viewImport() {
         ions: [{ mz: 118, marker: 'red' }, { mz: 113, marker: '+' }, { mz: 99, marker: '+' }, { mz: 102, marker: '+' }, { mz: 233, marker: '+' }] }]
     }, null, 2))}</textarea></div>
     <div class="row">
-      <div class="field" style="min-width:160px"><label>绑定样本</label><select id="p_sample"><option value="">未绑定</option>${samples.items.map(s => `<option value="${esc(s.sample_id)}">${esc(s.code)}</option>`).join('')}</select></div>
-      <div class="field" style="min-width:160px"><label>绑定制备批次 ID</label><input id="p_prep" placeholder="可选" value="${esc(state.preparationBatchId || '')}"></div>
-      <div class="field" style="min-width:160px"><label>绑定 GC 方法</label><select id="p_method"><option value="">未绑定</option>${methods.items.map(m => `<option value="${esc(m.method_id)}">${esc(m.method_id)}</option>`).join('')}</select></div>
-      <div class="field" style="min-width:150px"><label>NaBD4/NaBH4 标签</label>
-        <select id="p_label"><option value="NaBD4">NaBD4</option><option value="NaBH4">NaBH4</option><option value="unknown" selected>unknown</option></select></div>
-      <div class="field" style="min-width:150px"><label>已检出单糖（逗号分隔）</label><input id="p_comp" placeholder="Glc,Gal"></div>
       <div class="field" style="min-width:130px"><label>观测 RI（可选）</label><input id="p_ri" type="number" step="0.1" placeholder="如 2050"></div>
       <div class="field" style="min-width:140px"><label>观测 RT/min（可选）</label><input id="p_rt" type="number" step="0.01" placeholder="如 23.4"></div>
       <div class="field" style="min-width:250px"><label title="只声明峰表覆盖完整采集范围；不会自动猜分子离子或硬删糖骨架"><input type="checkbox" id="p_full" style="width:auto;margin-right:6px">仪器导出的完整峰表</label></div>
@@ -362,7 +363,33 @@ async function viewImport() {
       PMAA 的分子量随甲基/乙酰取代数变化，不能按 Hex/dHex/Pen 各设一个固定 MW。
       RI 定种为<b>正交通道</b>：无同方法标准时静默，不改变现有结论。</div>
     <div id="p_out"></div>
-  </div>`;
+  </div></details>`;
+
+  const captureSimpleMeta = () => {
+    const label = $('#simple_label').value;
+    state.reductionLabel = label;
+    state.peakMeta = {
+      ...(state.peakMeta || {}),
+      sample_id: state.sampleId || null,
+      preparation_batch_id: state.preparationBatchId || null,
+      method_id: state.methodId || null,
+      sample_reduction_label: label,
+      composition_detected: $('#simple_comp').value.split(',').map(s => s.trim()).filter(Boolean),
+      composition_detection_limit_known: false,
+    };
+  };
+  const updateLabelNotice = () => {
+    const n = $('#label_notice'), label = $('#simple_label').value;
+    n.className = `note ${label === 'NaBD4' ? '' : 'warn'}`;
+    n.innerHTML = label === 'NaBD4'
+      ? '当前参考库为 <b>NaBD₄</b> 数据；还原试剂会随本次分析保存。'
+      : label === 'NaBH4'
+        ? '<b>注意：</b>当前参考库为 NaBD₄。NaBH₄ 数据不能把全部峰统一平移后直接确证，结果只能作跨标签候选。'
+        : '<b>注意：</b>还原试剂不确定时，平台会降低证据等级。';
+  };
+  $('#simple_label').onchange = () => { captureSimpleMeta(); updateLabelNotice(); };
+  $('#simple_comp').onchange = captureSimpleMeta;
+  captureSimpleMeta(); updateLabelNotice();
 
   updateImportGate();
 
@@ -376,6 +403,7 @@ async function viewImport() {
   input.onchange = () => { if (input.files[0]) doUpload(input.files[0]); };
 
   async function doUpload(file) {
+    captureSimpleMeta();
     if (file.size > fmt.max_upload_bytes) { toast(`文件超过 ${MB} MB 上限`, true); return; }
     $('#u_out').innerHTML = `<div class="note">正在上传 ${esc(file.name)}（${(file.size / 1024).toFixed(0)} KB）…</div>`;
     const fd = new FormData();
@@ -388,7 +416,7 @@ async function viewImport() {
       const res = await fetch('/v1/imports/upload', { method: 'POST', body: fd });
       const d = await res.json();
       if (!res.ok) throw new Error((d.error_code ? `[${d.error_code}] ` : '') + (d.message || res.status));
-      // 图片 / PDF / Word：服务端已自动转提取流程，交给第 3 步做人工校准
+      // 图片 / PDF / Word：服务端已自动转到谱图与峰检查。
       if (d.needs_calibration) {
         state.extractInitial = { data: d, file };
         invalidateFrom(1);
@@ -396,8 +424,8 @@ async function viewImport() {
           kind: d.provenance === 'derived_from_image' ? 'spectrum_image' : 'document' });
         $('#u_out').innerHTML = `<div class="note"><b>${esc(file.name)}</b> 已读取，识别为
           <b>${esc(d.provenance === 'derived_from_image' ? '质谱图' : '文档')}</b>，
-          已自动进入第 3 步「提取峰值」做人工校准。</div>`;
-        toast('已读取，进入第 3 步'); go('extract'); return;
+          已自动进入「检查谱图与峰」做人工校准。</div>`;
+        toast('已读取，请检查谱图与峰'); go('extract'); return;
       }
       renderUploadResult(d);
       toast(`已解析 ${file.name}`); refreshFooter();
@@ -418,18 +446,13 @@ async function viewImport() {
         </tbody></table></div>`;
     } else {
       window.__uploadedComponents = d.components;
-      state.peakMeta = { sample_id: $('#p_sample').value || state.sampleId,
-        preparation_batch_id: $('#p_prep').value || state.preparationBatchId,
-        method_id: $('#p_method').value || state.methodId,
-        sample_reduction_label: $('#p_label').value,
-        composition_detected: $('#p_comp').value.split(',').map(s => s.trim()).filter(Boolean),
-        composition_detection_limit_known: $('#p_comp_complete').checked };
+      captureSimpleMeta();
       invalidateFrom(1);
       completeStep(1, { filename: f.filename, sha256: f.sha256, kind: 'peak_table',
                         components: d.components, count: d.count });
       updateImportGate();
       body += `<div class="note">解析出 ${d.count} 个组分。
-        <button class="btn sec" id="u_run" style="margin-left:8px">进入第 3 步「提取峰值」→</button></div>
+        <button class="btn sec" id="u_run" style="margin-left:8px">检查峰表并继续 →</button></div>
         <div class="scroll"><table><thead><tr><th>组分</th><th>RT</th><th>面积</th><th>模式</th><th>离子数</th></tr></thead><tbody>
         ${d.components.map(x => `<tr><td class="mono">${esc(x.component_id)}</td><td>${x.rt ?? '—'}</td>
           <td>${x.area ?? '—'}</td><td>${esc(x.evidence_type)}</td><td>${(x.ions || []).length}</td></tr>`).join('')}
@@ -438,12 +461,7 @@ async function viewImport() {
     $('#u_out').innerHTML = body;
     const run = $('#u_run');
     if (run) run.onclick = () => {
-      state.peakMeta = { sample_id: $('#p_sample').value || state.sampleId,
-        preparation_batch_id: $('#p_prep').value || state.preparationBatchId,
-        method_id: $('#p_method').value || state.methodId,
-        sample_reduction_label: $('#p_label').value,
-        composition_detected: $('#p_comp').value.split(',').map(s => s.trim()).filter(Boolean),
-        composition_detection_limit_known: $('#p_comp_complete').checked };
+      captureSimpleMeta();
       go('extract');
     };
   }
@@ -495,12 +513,8 @@ async function viewImport() {
       if ($('#p_full').checked) comps.forEach(c => {
         if (c.spectrum_completeness == null) c.spectrum_completeness = 'full_acquired_range';
       });
-      state.peakMeta = { sample_id: $('#p_sample').value || state.sampleId,
-        preparation_batch_id: $('#p_prep').value || state.preparationBatchId,
-        method_id: $('#p_method').value || state.methodId,
-        sample_reduction_label: $('#p_label').value,
-        composition_detected: $('#p_comp').value.split(',').map(s => s.trim()).filter(Boolean),
-        composition_detection_limit_known: $('#p_comp_complete').checked };
+      captureSimpleMeta();
+      state.peakMeta.composition_detection_limit_known = $('#p_comp_complete').checked;
       invalidateFrom(1);
       completeStep(1, { filename: '手工录入峰表', kind: 'peak_table', components: comps, count: comps.length });
       toast(`已解析 ${comps.length} 个组分`); go('extract');
@@ -508,7 +522,7 @@ async function viewImport() {
   };
 }
 
-/** 第 2 步门禁提示：区分「参考库文件」与「样品数据文件」 */
+/** 上传状态提示：区分「参考库文件」与「样品数据文件」 */
 function updateImportGate() {
   const g = $('#u_gate');
   if (!g) return;
@@ -517,9 +531,40 @@ function updateImportGate() {
                  document: '文档', spectrum_image: '谱图图片' }[f?.kind] || f?.kind || '—';
   g.innerHTML = f
     ? `<div class="note">已导入 <b>${esc(f.filename)}</b>（${esc(name)}）
-       ${f.count ? ` · ${f.count} 个组分` : ' · 待第 3 步提取峰值'}。可进入第 3 步。</div>`
+       ${f.count ? ` · ${f.count} 个组分` : ' · 待检查谱图与峰'}。可进入第 2 步。</div>`
     : `<div class="note warn">尚未导入样品数据。<b>参考库 xlsx 只更新参考库、不解锁下一步</b>——
        请再导入峰表 / 谱图 / 文档作为本次分析的输入。</div>`;
+}
+
+/** 三步版：峰确认后自动接受当前峰集、运行参考库检索并打开结果页。 */
+async function runSimplifiedAnalysis(comps) {
+  if (!comps?.length) throw new Error('没有可用于解析的峰');
+  const meta = state.peakMeta || {};
+  const components = comps.map(c => ({
+    ...c,
+    spectrum_completeness: String(c.provenance || '').startsWith('derived')
+      ? 'selected_ions' : (c.spectrum_completeness || 'unknown'),
+  }));
+  invalidateFrom(2);
+  completeStep(2, components);
+  completeStep(3, components);
+  const r = await api('/analyses', { method: 'POST', body: {
+    sample_id: meta.sample_id || null,
+    preparation_batch_id: meta.preparation_batch_id || null,
+    method_id: meta.method_id || null,
+    sample_reduction_label: meta.sample_reduction_label || 'unknown',
+    composition_detected: meta.composition_detected || [],
+    composition_detection_limit_known: !!meta.composition_detection_limit_known,
+    components,
+  } });
+  state.analysisId = r.analysis_id;
+  completeStep(4, r);
+  completeStep(5, (r.components || []).map(c => ({
+    component_id: c.component_id,
+    candidates: (c.result?.candidate_derivatives || []).map(d => d.derivative_id),
+  })));
+  go('candidates');
+  return r;
 }
 
 /* ============================================================ ⊕ 谱图提取
@@ -537,7 +582,7 @@ async function viewExtract() {
 
   $('#main').innerHTML = `
   <div class="card">
-    <h2>从文档 / 图片提取质谱峰</h2>
+    <h2>② 检查谱图与峰</h2>
     <p class="hint">支持 PDF（先抽文本表格，无文本才渲染页面）、Word（.doc/.docx）、以及 PNG/JPEG/TIFF/WebP/BMP 谱图。
       结果一律视为<b>推导值</b>，必须人工核对后才能使用。</p>
     ${fmt.ocr_available
@@ -632,14 +677,14 @@ async function viewExtract() {
         <td>${esc(status)}</td></tr>`;
     }).join('');
     return `<div class="note"><b>批量进度：</b>已保存 ${SAVED.size} / ${INVENTORY.length}，已忽略 ${SKIPPED.size}。
-      每张图分别校准；只有明确保存或忽略后才能整批进入审核。</div>
+      每张图分别校准；只有明确保存或忽略后才能整批解析。</div>
       <div class="scroll" style="max-height:190px"><table><thead><tr><th>图</th><th>文档标签</th><th>状态</th><th>详情</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   };
   const refreshBatchStatus = () => {
     const box = $('#x_batch_status');
     if (box) box.innerHTML = batchStatusHtml();
     const done = $('#x_finish_all');
-    if (done) done.textContent = `确认全部已保存谱图（${SAVED.size}）→ 审核`;
+    if (done) done.textContent = `解析全部已保存谱图（${SAVED.size}）→ 查看结果`;
   };
 
   const input = $('#xfile'), drop = $('#xdrop');
@@ -800,9 +845,9 @@ async function viewExtract() {
           <button class="btn sec" id="x_add">+ 手工加一行</button>
           <label class="chk" title="图像反解的强度是近似值，默认按定性离子表处理（更保守）">
             <input type="checkbox" id="x_numeric"> 按数值谱比对（用反解强度跑加权余弦）</label>
-          <button class="btn" id="x_confirm">${INVENTORY.length > 1 ? '保存当前谱图' : '确认峰表并比对数据库'}</button>
+          <button class="btn" id="x_confirm">${INVENTORY.length > 1 ? '保存当前谱图' : '确认峰并查看结果'}</button>
           ${INVENTORY.length > 1 ? `<button class="btn sec" id="x_skip">此图不是谱图，忽略</button>
-            <button class="btn" id="x_finish_all">确认全部已保存谱图（${SAVED.size}）→ 审核</button>` : ''}
+            <button class="btn" id="x_finish_all">解析全部已保存谱图（${SAVED.size}）→ 查看结果</button>` : ''}
         </div>
         <div class="note" style="font-size:12px">文档表格/文本路径解出的数值是原文数字，默认按数值谱；
           图像反解的强度是图上量出来的近似值，默认按<b>定性离子表</b>处理——
@@ -877,10 +922,8 @@ async function viewExtract() {
     const submitConfirmed = async spectra => {
       const body = spectra.length === 1 && INVENTORY.length <= 1 ? spectra[0] : { spectra };
       const r = await api('/imports/extract/confirm', { method: 'POST', body });
-      invalidateFrom(2);
-      completeStep(2, r.components);
-      toast(`已确认 ${r.count} 张谱图并生成 ${r.count} 个独立组分，进入第 4 步审核`);
-      go('peaks');
+      await runSimplifiedAnalysis(r.components);
+      toast(`已解析 ${r.count} 张谱图并生成 ${r.count} 个独立结果`);
     };
 
     $('#x_confirm').onclick = async () => {
@@ -914,7 +957,7 @@ async function viewExtract() {
         toast(`还有 ${pending.length} 张图片未处理：${pending.slice(0, 8).map(x => x.image_index + 1).join('、')}${pending.length > 8 ? '…' : ''}`, true);
         return;
       }
-      if (!SAVED.size) { toast('没有已保存的谱图，不能进入审核', true); return; }
+      if (!SAVED.size) { toast('没有已保存的谱图，不能运行解析', true); return; }
       try {
         await submitConfirmed([...SAVED.values()].sort((a, b) => a.image_index - b.image_index));
       } catch (e) { toast(e.message, true); }
@@ -930,9 +973,9 @@ async function viewExtractFromPeakTable(f) {
   const ionText = c => (c.ions || []).map(i => i.mz ?? i).join(', ');
   $('#main').innerHTML = `
   <div class="card">
-    <h2>③ 提取峰值</h2>
-    <div class="note">第 2 步导入的是<b>结构化峰表</b>，无需图像反解与轴校准。
-      请核对下列组分，确认后进入第 4 步逐峰审核。</div>
+    <h2>② 检查谱图与峰</h2>
+    <div class="note">上传的是<b>结构化峰表</b>，无需图像反解与轴校准。
+      请核对下列组分；确认后平台直接运行参考库解析。</div>
     <div class="scroll" style="margin-top:12px">
       <table><thead><tr><th>组分</th><th>标签</th><th>RT</th><th>面积</th><th>模式</th><th>离子 (m/z)</th></tr></thead><tbody>
         ${comps.map(c => `<tr><td class="mono">${esc(c.component_id)}</td>
@@ -942,12 +985,20 @@ async function viewExtractFromPeakTable(f) {
       </tbody></table>
     </div>
     <div class="row" style="margin-top:12px">
-      <button class="btn" id="pt_ok">确认 ${comps.length} 个组分 → 第 4 步</button>
+      <button class="btn" id="pt_ok">确认 ${comps.length} 个组分并查看结果</button>
     </div>
   </div>`;
-  $('#pt_ok').onclick = () => {
-    invalidateFrom(2); completeStep(2, comps);
-    toast(`已确认 ${comps.length} 个组分`); go('peaks');
+  $('#pt_ok').onclick = async () => {
+    try {
+      $('#pt_ok').disabled = true;
+      $('#pt_ok').textContent = '正在解析…';
+      await runSimplifiedAnalysis(comps);
+      toast(`已解析 ${comps.length} 个组分`);
+    } catch (e) {
+      $('#pt_ok').disabled = false;
+      $('#pt_ok').textContent = `确认 ${comps.length} 个组分并查看结果`;
+      toast(e.message, true);
+    }
   };
 }
 
@@ -1131,11 +1182,11 @@ function interpHTML(res) {
 
 async function viewCandidates() {
   const analysisId = WIZ.data.analysis?.analysis_id || state.analysisId;
-  $('#main').innerHTML = `<div class="card"><h2>⑥ 候选结构</h2><p class="hint" id="rv_head">加载中…</p><div id="rv_body"></div></div>`;
-  if (!analysisId) { $('#rv_head').textContent = '尚无分析任务，请先在第 5 步运行谱图比对。'; return; }
+  $('#main').innerHTML = `<div class="card"><h2>③ 解析结果</h2><p class="hint" id="rv_head">加载中…</p><div id="rv_body"></div></div>`;
+  if (!analysisId) { $('#rv_head').textContent = '尚无分析结果，请先上传文件并确认峰。'; return; }
   const r = await api(`/analyses/${analysisId}/components`);
-  $('#rv_head').innerHTML = `分析 <code>${esc(state.analysisId)}</code> · ${r.items.length} 个组分 ·
-    算法证据在左，人工决定在右；<b>确认必须引用证据</b>，不能以勾选代替证据门槛。`;
+  $('#rv_head').innerHTML = `${r.items.length} 个组分 · 先看 PMAA 与连接方式，再查看候选排序、冲突和缺失证据。
+    结果是候选，不等同于唯一结构确证。`;
 
   $('#rv_body').innerHTML = r.items.map(c => {
     const res = c.result || {};
@@ -1180,14 +1231,16 @@ async function viewCandidates() {
           <div>${(res.next_discriminating_evidence || []).map(m => `<span class="tag">${esc(m)}</span>`).join('') || '—'}</div>
           <h4 style="font-size:13px;margin:12px 0 6px">规则说明</h4>
           <div style="font-size:12px;color:var(--text-2)">${(res.notes || []).map(n => `· ${esc(n)}`).join('<br>') || '—'}</div>
-          <div class="row" style="margin-top:14px">
-            <div class="field"><label>决定 (JSON)</label><input class="rv_dec" data-cid="${esc(c.component_id)}" value='{"derivative_identity":"probable","evidence_ids":["F001"]}'></div>
-          </div>
-          <div class="row">
-            <div class="field"><label>审核人</label><input class="rv_who" data-cid="${esc(c.component_id)}" value="reviewer"></div>
-            <div class="field"><label>原因（必填）</label><input class="rv_why" data-cid="${esc(c.component_id)}" placeholder="依据说明"></div>
-            <button class="btn sec rv_submit" data-cid="${esc(c.component_id)}">提交复核</button>
-          </div>
+          <details class="advanced">
+            <summary>高级：记录正式人工复核</summary><div class="advanced-body">
+              <div class="field"><label>决定 JSON</label><input class="rv_dec" data-cid="${esc(c.component_id)}" value='{"derivative_identity":"probable","evidence_ids":["F001"]}'></div>
+              <div class="row">
+                <div class="field"><label>审核人</label><input class="rv_who" data-cid="${esc(c.component_id)}" value="reviewer"></div>
+                <div class="field"><label>原因（必填）</label><input class="rv_why" data-cid="${esc(c.component_id)}" placeholder="依据说明"></div>
+                <button class="btn sec rv_submit" data-cid="${esc(c.component_id)}">提交复核</button>
+              </div>
+            </div>
+          </details>
         </div>
       </div></div>`;
   }).join('');
@@ -1203,25 +1256,27 @@ async function viewCandidates() {
     } catch (e) { toast(e.message, true); }
   });
 
-  // 第 6 步完成动作：确认候选集 → 第 7 步
-  const confirmed = (WIZ.data.candidates || []).map(c => c.component_id);
   $('#rv_body').insertAdjacentHTML('beforeend', `
     <div class="row" style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
-      <button class="btn" id="cv_ok">确认候选集 → 第 7 步 AI 评议</button>
-      <span class="hint">${confirmed.length ? `已确认 ${confirmed.length} 个组分的候选` : '查看候选结构后点此进入 AI 评议'}</span>
+      <button class="btn" id="cv_ai">AI 辅助解释（可选）</button>
+      <button class="btn sec" id="cv_new">分析新文件</button>
+      <details class="advanced" style="margin-left:auto">
+        <summary>更多专业工具</summary><div class="advanced-body row">
+          <button class="btn sec" id="cv_finish">样本级 QC / 导出报告</button>
+          <button class="btn sec" id="cv_lib">参考库详情</button>
+          <button class="btn sec" id="cv_ri">RI 标准库</button>
+        </div>
+      </details>
     </div>`);
-  $('#cv_ok').onclick = () => {
-    invalidateFrom(5);
-    completeStep(5, r.items.map(c => ({
-      component_id: c.component_id,
-      candidates: (c.result?.candidate_derivatives || []).map(d => d.derivative_id) })));
-    toast('候选集已确认'); go('ai');
-  };
+  $('#cv_ai').onclick = () => go('ai');
+  $('#cv_new').onclick = () => go('import');
+  $('#cv_finish').onclick = () => go('finish');
+  $('#cv_lib').onclick = () => go('library');
+  $('#cv_ri').onclick = () => go('ristd');
 }
 
-/* ============================================================ ⑦ AI 评议
-   第 6 步已给出全部候选结构；这里让 AI 给出"最相关项 + 理由 + 置信度"，
-   由人拍板（q-2：推荐 + 理由，人拍板）。接受建议不会自动提高证据等级。
+/* ============================================================ AI 辅助解释
+   规则引擎的全部候选不变；AI 仅做摘要、解释和补测建议。
 -------------------------------------------------------------------------- */
 async function viewAI() {
   const provs = await api('/llm/providers');
@@ -1230,9 +1285,9 @@ async function viewAI() {
   const firstCid = (WIZ.data.candidates || [])[0]?.component_id || 'peak_007';
   $('#main').innerHTML = `
   <div class="card">
-    <h2>⑦ AI 评议</h2>
-    <p class="hint">AI 基于前几步冻结的证据包，给出<b>最相关项 + 理由 + 置信度</b>；输出只是建议，
-      <b>由你拍板</b>。接受不会自动提高证据等级——证据门槛仍在第 6 步的人工复核里。</p>
+    <h2>AI 辅助解释</h2>
+    <p class="hint">AI 只基于已生成的规则证据包解释候选、冲突与补测方向，
+      不能删除候选、恢复 EI 不可辨识信息或自动提高证据等级。</p>
     <div class="row">
       <div class="field" style="min-width:200px"><label>分析任务</label><select id="l_an">
         ${list.items.map(a => `<option value="${esc(a.analysis_id)}" ${a.analysis_id === aid ? 'selected' : ''}>${esc(a.analysis_id)} (rev${a.revision})</option>`).join('')}
@@ -1243,6 +1298,7 @@ async function viewAI() {
       <div class="field" style="min-width:130px"><label>组分 ID</label><input id="l_cid" value="${esc(firstCid)}"></div>
       <button class="btn" id="l_run">请求评议</button>
       <button class="btn sec" id="l_list">查看已有评议</button>
+      <button class="btn sec" id="l_back">返回解析结果</button>
     </div>
     <div id="l_out"></div>
   </div>`;
@@ -1259,6 +1315,7 @@ async function viewAI() {
     try { const r = await api(`/analyses/${$('#l_an').value}/llm-assessments`); renderAssessments(r.items.map(i => ({ assessment_id: i.assessment_id, ...i }))); }
     catch (e) { toast(e.message, true); }
   };
+  $('#l_back').onclick = () => go('candidates');
 
   function renderAssessments(items) {
     $('#l_out').innerHTML = items.map(a => {
@@ -1279,39 +1336,20 @@ async function viewAI() {
           <div>${(pr.candidate_reviews || []).map(r => `<span class="tag">${esc(r.candidate_id)}: ${esc(r.assessment)}</span>`).join('')}</div>
           <div style="margin-top:6px">保留歧义：${(pr.retained_ambiguity_ids || []).map(x => `<code>${esc(x)}</code>`).join('、') || '—'}</div>
           <div>建议处置：<b>${esc(pr.recommended_disposition)}</b></div>` : ''}
-        ${a.assessment_id ? `<div class="row" style="margin-top:10px">
-          <select id="d_${esc(a.assessment_id)}"><option value="accepted">接受（采纳建议）</option><option value="partially_accepted">部分接受</option><option value="rejected">拒绝</option></select>
-          <input id="r_${esc(a.assessment_id)}" placeholder="审核人">
-          <input id="w_${esc(a.assessment_id)}" placeholder="拍板理由（必填）">
-          <button class="btn sec" data-aid="${esc(a.assessment_id)}">拍板 · 提交审核</button></div>
-          <div class="note" style="font-size:12px">提交后本步标记完成，可点底部「完成流程」进入 QC 与报告。</div>` : ''}
+        ${a.assessment_id ? `<div class="note" style="font-size:12px">此内容是辅助解释；需要留存正式人工决定时，请返回结果页展开「记录正式人工复核」。</div>` : ''}
       </div>`;
     }).join('') || '<div class="empty">暂无评议，点「请求评议」</div>';
-
-    document.querySelectorAll('[data-aid]').forEach(b => b.onclick = async () => {
-      const id = b.dataset.aid;
-      const dec = $(`#d_${id}`).value;
-      try {
-        const r = await api(`/llm-assessments/${id}/reviews`, { method: 'POST', body: {
-          decision: dec, reviewer: $(`#r_${id}`).value || 'reviewer', reason: $(`#w_${id}`).value } });
-        if (dec === 'accepted' || dec === 'partially_accepted') {
-          completeStep(6, { assessment_id: id, decision: dec });
-          toast('已拍板，第 7 步完成'); renderWizBar();
-        } else { toast(r.note || '已记录拒绝'); }
-      } catch (e) { toast(e.message, true); }
-    });
   }
 }
 
-/* ============================================================ ⑧ 完成：QC 与报告
-   向导终点（q-3：QC 与报告吸收进流程末尾）。分析任务来自第 5 步。
+/* ============================================================ 高级：QC 与报告
 -------------------------------------------------------------------------- */
 async function viewFinish() {
   const aid = WIZ.data.analysis?.analysis_id || state.analysisId;
-  if (!aid) { $('#main').innerHTML = `<div class="card"><h2>⑧ 完成：QC 与报告</h2><p class="hint">尚无分析任务，请先走完前 7 步。</p></div>`; return; }
+  if (!aid) { $('#main').innerHTML = `<div class="card"><h2>高级：QC 与报告</h2><p class="hint">尚无分析任务，请先上传并解析数据。</p></div>`; return; }
   $('#main').innerHTML = `
   <div class="card">
-    <h2>⑧ 完成：样本级 QC 与报告</h2>
+    <h2>高级：样本级 QC 与报告</h2>
     <p class="hint">分析任务 <code>${esc(aid)}</code>。QC 失败会<b>冻结</b>正式结构与定量放行，但候选全部保留供研究；
       报告可随时重导，重跑生成新版本不改写历史。</p>
     <div class="grid g3" style="margin-top:8px">
@@ -1326,6 +1364,7 @@ async function viewFinish() {
       <button class="btn" id="f_qc">计算 QC</button>
       <button class="btn sec" id="f_json">导出 JSON 报告</button>
       <button class="btn sec" id="f_html">导出 HTML 报告</button>
+      <button class="btn sec" id="f_back">返回解析结果</button>
     </div>
     <div id="f_out"></div>
   </div>`;
@@ -1356,6 +1395,7 @@ async function viewFinish() {
       const url = URL.createObjectURL(await res.blob()); window.open(url, '_blank', 'noopener'); setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { toast(e.message, true); }
   };
+  $('#f_back').onclick = () => go('candidates');
 }
 
 /* ============================================================ ⑤ 样本级 QC */
@@ -1585,4 +1625,4 @@ document.addEventListener('click', e => {
   if (b && b.dataset.view) go(b.dataset.view);
 });
 refreshFooter();
-go('sample');
+go('import');
