@@ -1,0 +1,26 @@
+# ---- Web / API ----
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+SQLAlchemy>=2.0
+python-multipart>=0.0.9
+httpx>=0.26
+
+# ---- 表格与数据 ----
+openpyxl>=3.1
+PyYAML>=6.0
+
+# ---- 文档解析（PDF / Word）----
+pdfplumber>=0.11      # PDF 文本与表格提取（首选路径）
+PyMuPDF>=1.24         # 提供 fitz：PDF 页面光栅化，供图像反解兜底
+python-docx>=1.1      # .docx 表格与正文
+
+# ---- 图像谱峰反解 ----
+numpy>=1.24
+Pillow>=10.0
+
+# ---- OCR：自动识别谱图 x 轴刻度（可选，装上更省事）----
+# 纯 pip、自带 ONNX 模型，不需要 tesseract / brew 等系统依赖（约 90 MB）。
+# 不装也能正常工作，只是 m/z 轴范围需要手动填写；
+# 删掉这一行不会影响其他任何功能。
+rapidocr-onnxruntime>=1.2

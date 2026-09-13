@@ -1,0 +1,5 @@
+#!/bin/bash
+# 由「启动平台.app」双击触发：在终端窗口中运行启动器，便于看到日志与错误
+HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+osascript -e "tell application \"Terminal\" to do script \"cd '\"$HERE\"' && ./启动平台.command\"" >/dev/null 2>&1 \
+  || "$HERE/scripts/launcher.sh"

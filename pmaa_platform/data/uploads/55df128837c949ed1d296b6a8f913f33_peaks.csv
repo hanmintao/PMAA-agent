@@ -1,0 +1,3 @@
+component_id,peak_label,rt,area,evidence_type,ions
+peak_001,P1,21.3,12000,qualitative_ion_list,"118:red,129:+,87:+"
+peak_002,P2,24.8,8000,qualitative_ion_list,"102:+,118:red,162:+"

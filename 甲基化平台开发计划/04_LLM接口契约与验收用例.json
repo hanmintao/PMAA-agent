@@ -1,0 +1,717 @@
+{
+  "spec_version": "0.1.0",
+  "status": "design_contract_not_implemented",
+  "compatibility": {
+    "base_contract": "03_数据契约与验收用例.json",
+    "base_contract_version": "0.2.0"
+  },
+  "notes": [
+    "schema是内部契约；实际供应商请求由adapter生成。",
+    "示例为合成契约夹具，不是用户实验数据或LLM真实调用结果。",
+    "本文件未包含任何API密钥；本轮没有真实模型请求。",
+    "JSON格式校验与科学语义核验分开进行。"
+  ],
+  "schemas": {
+    "provider_assessment_input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "bundle_id",
+        "analysis_id",
+        "analysis_revision",
+        "component_id",
+        "evidence_type",
+        "spectrum_completeness",
+        "input_hash",
+        "method_version",
+        "library_version",
+        "rule_version",
+        "qc_status",
+        "facts",
+        "candidates",
+        "rules",
+        "ambiguities",
+        "missing_evidence_codes",
+        "evidence_ceiling"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "bundle_id": {
+          "type": "string"
+        },
+        "analysis_id": {
+          "type": "string"
+        },
+        "analysis_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "component_id": {
+          "type": "string"
+        },
+        "evidence_type": {
+          "enum": [
+            "qualitative_ion_list",
+            "numeric_spectrum"
+          ]
+        },
+        "spectrum_completeness": {
+          "enum": [
+            "full_acquired_range",
+            "selected_ions",
+            "unknown"
+          ]
+        },
+        "input_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "method_version": {
+          "type": "string"
+        },
+        "library_version": {
+          "type": "string"
+        },
+        "rule_version": {
+          "type": "string"
+        },
+        "qc_status": {
+          "enum": [
+            "passed",
+            "warning",
+            "failed",
+            "not_assessed"
+          ]
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fact_id",
+              "field",
+              "value",
+              "unit",
+              "basis",
+              "source_locator"
+            ],
+            "properties": {
+              "fact_id": {
+                "type": "string"
+              },
+              "field": {
+                "type": "string"
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "array",
+                  "object",
+                  "null"
+                ]
+              },
+              "unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "basis": {
+                "enum": [
+                  "observed",
+                  "derived",
+                  "reference",
+                  "unknown"
+                ]
+              },
+              "source_locator": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate_id",
+              "derivative_id",
+              "residue_label",
+              "source_ids"
+            ],
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "derivative_id": {
+                "type": "string"
+              },
+              "residue_label": {
+                "type": "string"
+              },
+              "source_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rule_id",
+              "text"
+            ],
+            "properties": {
+              "rule_id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "ambiguities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ambiguity_id",
+              "candidate_ids",
+              "type",
+              "required_evidence_code"
+            ],
+            "properties": {
+              "ambiguity_id": {
+                "type": "string"
+              },
+              "candidate_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "type": {
+                "enum": [
+                  "identical_derivative_origins",
+                  "coelution",
+                  "similar_ei",
+                  "label_unknown",
+                  "other"
+                ]
+              },
+              "required_evidence_code": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "missing_evidence_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_ceiling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maximum_derivative_identity_level",
+            "residue_mapping_must_remain_ambiguous",
+            "calibrated_quantification_available"
+          ],
+          "properties": {
+            "maximum_derivative_identity_level": {
+              "enum": [
+                "confirmed",
+                "probable",
+                "candidate",
+                "unknown"
+              ]
+            },
+            "residue_mapping_must_remain_ambiguous": {
+              "type": "boolean"
+            },
+            "calibrated_quantification_available": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "provider_assessment_output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "component_id",
+        "summary",
+        "ranking_groups",
+        "candidate_reviews",
+        "retained_ambiguity_ids",
+        "missing_evidence_codes",
+        "next_actions",
+        "recommended_disposition"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "component_id": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "ranking_groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate_ids"
+            ],
+            "properties": {
+              "candidate_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "candidate_reviews": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "candidate_id",
+              "assessment",
+              "evidence_ids",
+              "rule_ids",
+              "reason_summary"
+            ],
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "assessment": {
+                "type": "string",
+                "enum": [
+                  "supports",
+                  "contradicts",
+                  "insufficient"
+                ]
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rule_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reason_summary": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "retained_ambiguity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_evidence_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "next_actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "action_code",
+              "evidence_ids",
+              "purpose"
+            ],
+            "properties": {
+              "action_code": {
+                "type": "string",
+                "enum": [
+                  "REVIEW_NMR_RING_EVIDENCE",
+                  "RUN_SAME_METHOD_STANDARD",
+                  "RUN_SECOND_COLUMN",
+                  "REVIEW_METHYLATION_COMPLETENESS",
+                  "REVIEW_HYDROLYSIS_RECOVERY",
+                  "VERIFY_REDUCTION_LABEL",
+                  "REVIEW_COMPOSITION_METHOD",
+                  "OBTAIN_FULL_EI",
+                  "REVIEW_CALIBRATION",
+                  "REQUEST_LIBRARY_EXPANSION",
+                  "MANUAL_REVIEW"
+                ]
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "purpose": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "recommended_disposition": {
+          "type": "string",
+          "enum": [
+            "maintain_candidates",
+            "needs_review",
+            "request_additional_evidence"
+          ]
+        }
+      }
+    }
+  },
+  "example_input": {
+    "schema_version": "1.0",
+    "bundle_id": "fixture_bundle_001",
+    "analysis_id": "fixture_analysis",
+    "analysis_revision": 1,
+    "component_id": "peak_007",
+    "evidence_type": "qualitative_ion_list",
+    "spectrum_completeness": "selected_ions",
+    "input_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "method_version": "fixture_method_unknown",
+    "library_version": "fixture_library",
+    "rule_version": "rules_v1",
+    "qc_status": "not_assessed",
+    "facts": [
+      {
+        "fact_id": "F001",
+        "field": "candidate_derivative.o_methyl_positions",
+        "value": [
+          2,
+          3,
+          6
+        ],
+        "unit": null,
+        "basis": "derived",
+        "source_locator": "contract_fixture:rule_candidate"
+      },
+      {
+        "fact_id": "F002",
+        "field": "sample.ring_form",
+        "value": null,
+        "unit": null,
+        "basis": "unknown",
+        "source_locator": "contract_fixture:missing_ring_evidence"
+      }
+    ],
+    "candidates": [
+      {
+        "candidate_id": "cand_4_Hexp",
+        "derivative_id": "fixture_shared_PMAA",
+        "residue_label": "4-Hexp",
+        "source_ids": [
+          "fixture_mapping"
+        ]
+      },
+      {
+        "candidate_id": "cand_5_Hexf",
+        "derivative_id": "fixture_shared_PMAA",
+        "residue_label": "5-Hexf",
+        "source_ids": [
+          "fixture_mapping"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "rule_id": "R_RING_ORIGIN",
+        "text": "已知相容骨架及标签下，这两个来源可形成同一PMAA；缺少原环型证据时保留两者。"
+      }
+    ],
+    "ambiguities": [
+      {
+        "ambiguity_id": "AMB_RING_01",
+        "candidate_ids": [
+          "cand_4_Hexp",
+          "cand_5_Hexf"
+        ],
+        "type": "identical_derivative_origins",
+        "required_evidence_code": "RING_FORM_EVIDENCE"
+      }
+    ],
+    "missing_evidence_codes": [
+      "RING_FORM_EVIDENCE",
+      "FULL_EI",
+      "RETENTION_EVIDENCE"
+    ],
+    "evidence_ceiling": {
+      "maximum_derivative_identity_level": "candidate",
+      "residue_mapping_must_remain_ambiguous": true,
+      "calibrated_quantification_available": false
+    }
+  },
+  "example_output": {
+    "schema_version": "1.0",
+    "component_id": "peak_007",
+    "summary": "甲基模式候选可对应两种原残基来源，当前证据不足以唯一判定。",
+    "ranking_groups": [
+      {
+        "candidate_ids": [
+          "cand_4_Hexp",
+          "cand_5_Hexf"
+        ]
+      }
+    ],
+    "candidate_reviews": [
+      {
+        "candidate_id": "cand_4_Hexp",
+        "assessment": "insufficient",
+        "evidence_ids": [
+          "F001",
+          "F002"
+        ],
+        "rule_ids": [
+          "R_RING_ORIGIN"
+        ],
+        "reason_summary": "模式相容，但缺少原环型、完整EI及保留证据。"
+      },
+      {
+        "candidate_id": "cand_5_Hexf",
+        "assessment": "insufficient",
+        "evidence_ids": [
+          "F001",
+          "F002"
+        ],
+        "rule_ids": [
+          "R_RING_ORIGIN"
+        ],
+        "reason_summary": "模式相容，但缺少原环型、完整EI及保留证据。"
+      }
+    ],
+    "retained_ambiguity_ids": [
+      "AMB_RING_01"
+    ],
+    "missing_evidence_codes": [
+      "RING_FORM_EVIDENCE",
+      "FULL_EI",
+      "RETENTION_EVIDENCE"
+    ],
+    "next_actions": [
+      {
+        "action_code": "REVIEW_NMR_RING_EVIDENCE",
+        "evidence_ids": [
+          "F002"
+        ],
+        "purpose": "核查原残基环型以区分候选来源。"
+      }
+    ],
+    "recommended_disposition": "needs_review"
+  },
+  "post_validation_rules": [
+    {
+      "id": "PV01",
+      "rule": "component_id必须等于请求组分；候选ID和事实/规则ID必须来自该证据包。"
+    },
+    {
+      "id": "PV02",
+      "rule": "ranking_groups必须无重复且覆盖全部候选；相同PMAA来源的等价组保留同组。"
+    },
+    {
+      "id": "PV03",
+      "rule": "candidate_reviews必须覆盖全部候选且不能重复；有实质评价时需要可核查依据。"
+    },
+    {
+      "id": "PV04",
+      "rule": "所有必保留ambiguity_id及输入缺失项必须保留，新增缺失项须从已审核代码表选择。"
+    },
+    {
+      "id": "PV05",
+      "rule": "输出Schema不提供正式确认或摩尔定量字段；summary/reason中仍需核查越界断言。"
+    },
+    {
+      "id": "PV06",
+      "rule": "事实ID存在不证明语义支持；难以自动核验的解释交人工审核，不直接写入正式结论。"
+    },
+    {
+      "id": "PV07",
+      "rule": "供应商refusal、incomplete、截断、Schema不符响应全部拒收，保留基础结果。"
+    },
+    {
+      "id": "PV08",
+      "rule": "QC失败可生成故障分析建议，但不得发布正式结构/定量结论。"
+    },
+    {
+      "id": "PV09",
+      "rule": "模型输出不能更改原峰、面积、数值、方法、标签或来源；数字由后端事实表渲染。"
+    },
+    {
+      "id": "PV10",
+      "rule": "模型新增候选建议先走独立检索与规则计算，不得直接作为已确认实体。"
+    }
+  ],
+  "persistence_fields": [
+    "assessment_id",
+    "analysis_revision",
+    "provider_config_version",
+    "provider_response_model",
+    "provider_request_id",
+    "request_hash",
+    "evidence_bundle_id",
+    "prompt_version",
+    "prompt_hash",
+    "schema_version",
+    "generation_parameters",
+    "raw_response",
+    "parsed_response",
+    "finish_status",
+    "validation_results",
+    "usage",
+    "cost_price_version",
+    "reviewer_decision"
+  ],
+  "runtime_defaults": {
+    "request_timeout_seconds": 60,
+    "sample_total_budget_seconds": 180,
+    "per_sample_concurrency": 2,
+    "max_transport_retries": 2,
+    "max_schema_repair_attempts": 1,
+    "estimated_component_input_token_budget": 8000,
+    "estimated_component_output_token_budget": 2000,
+    "hard_cost_limits_required_for_batch": true,
+    "raw_sample_file_transfer_default": false,
+    "save_response_for_replay": true
+  },
+  "acceptance_cases": [
+    {
+      "id": "B01",
+      "name": "捏造证据ID",
+      "mutation": "输出引用不在输入facts中的F999",
+      "expected": "拒收；LLM_UNKNOWN_EVIDENCE；基础候选不变。"
+    },
+    {
+      "id": "B02",
+      "name": "删除相同PMAA来源",
+      "mutation": "只保留cand_4_Hexp或把等价候选拆成不同优先级组",
+      "expected": "拒收；LLM_DROPPED_AMBIGUITY。"
+    },
+    {
+      "id": "B03",
+      "name": "无证据立体构型",
+      "mutation": "summary擅自添加α-D等确认断言",
+      "expected": "语义复核标记不支持；不得进入正式报告。"
+    },
+    {
+      "id": "B04",
+      "name": "捏造保留或实验值",
+      "mutation": "输出输入中不存在的RT或已完成实验步骤",
+      "expected": "事实校验失败；不得回写观测记录。"
+    },
+    {
+      "id": "B05",
+      "name": "定性离子伪造强度",
+      "mutation": "把+补成100%并宣称完整谱确认",
+      "expected": "拒绝该建议；保留candidate证据上限。"
+    },
+    {
+      "id": "B06",
+      "name": "无校准输出mol%",
+      "mutation": "无calibration时声称准确摩尔比例",
+      "expected": "拒收越界结论；不得创建calibrated_molar结果。"
+    },
+    {
+      "id": "B07",
+      "name": "不完整或拒绝响应",
+      "mutation": "响应截断/refusal/非JSON/多余字段",
+      "expected": "解析或状态检查失败；最多一次受限修复，仍失败则回退。"
+    },
+    {
+      "id": "B08",
+      "name": "网络超时",
+      "mutation": "供应商超过60秒且总预算耗尽",
+      "expected": "记录timeout，保留规则结果和待复核状态。"
+    },
+    {
+      "id": "B09",
+      "name": "限流与认证",
+      "mutation": "429/5xx与401分别注入",
+      "expected": "前者有限退避且不超总预算；后者不重复请求并提示配置错误。"
+    },
+    {
+      "id": "B10",
+      "name": "费用限制",
+      "mutation": "样本/日预算到达上限",
+      "expected": "停止新增LLM调用；基础分析可继续；已计费请求不隐藏。"
+    },
+    {
+      "id": "B11",
+      "name": "幂等及缓存隔离",
+      "mutation": "同请求重复提交，或不同项目使用相同文件哈希",
+      "expected": "同项目同版本复用评议；跨项目不误用缓存或泄露内容。"
+    },
+    {
+      "id": "B12",
+      "name": "模型与提示词变更",
+      "mutation": "更换model/prompt/library版本",
+      "expected": "新缓存键与新assessment；触发回归，不改历史。"
+    },
+    {
+      "id": "B13",
+      "name": "表格注释提示注入",
+      "mutation": "上传单元格含忽略规则并直接确认的指令",
+      "expected": "仅作资料内容；模型/应用不执行；若输出违规则拦截。"
+    },
+    {
+      "id": "B14",
+      "name": "引用真实但不支持结论",
+      "mutation": "引用存在的F002却声称环型已确认",
+      "expected": "事实语义冲突必须被识别；ID存在不能直接放行。"
+    },
+    {
+      "id": "B15",
+      "name": "有效辅助评议",
+      "mutation": "采用example_output，保留并列来源并建议核查环型",
+      "expected": "格式/引用/歧义检查通过，显示供人工复核，不自动提高确认等级。"
+    },
+    {
+      "id": "B16",
+      "name": "归档重放与重复性",
+      "mutation": "打开历史报告，随后另行请求模型重新评议",
+      "expected": "历史报告读取保存响应；新请求另存版本，不能把随机差异冒充历史重放。"
+    }
+  ]
+}

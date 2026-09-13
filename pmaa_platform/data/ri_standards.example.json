@@ -1,0 +1,47 @@
+[
+  {
+    "method_id": "HP-5MS_v1",
+    "skeleton": "Hex",
+    "o_methyl_positions": [2, 3, 4, 6],
+    "parent_sugar": "Glc",
+    "retention_index": 2050.0,
+    "retention_time": null,
+    "source": "in-house standard"
+  },
+  {
+    "method_id": "HP-5MS_v1",
+    "skeleton": "Hex",
+    "o_methyl_positions": [2, 3, 4, 6],
+    "parent_sugar": "Man",
+    "retention_index": 2080.0,
+    "retention_time": null,
+    "source": "in-house standard"
+  },
+  {
+    "method_id": "HP-5MS_v1",
+    "skeleton": "Hex",
+    "o_methyl_positions": [2, 3, 4, 6],
+    "parent_sugar": "Gal",
+    "retention_index": 2110.0,
+    "retention_time": null,
+    "source": "in-house standard"
+  },
+  {
+    "method_id": "HP-5MS_v1",
+    "skeleton": "dHex",
+    "o_methyl_positions": [2, 3, 4],
+    "parent_sugar": "Rha",
+    "retention_index": 1820.0,
+    "retention_time": null,
+    "source": "in-house standard"
+  },
+  {
+    "method_id": "HP-5MS_v1",
+    "skeleton": "dHex",
+    "o_methyl_positions": [2, 3, 4],
+    "parent_sugar": "Fuc",
+    "retention_index": 1855.0,
+    "retention_time": null,
+    "source": "in-house standard"
+  }
+]

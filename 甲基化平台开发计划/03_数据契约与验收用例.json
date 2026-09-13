@@ -1,0 +1,237 @@
+{
+  "spec_version": "0.2.0",
+  "status": "development_specification_not_validated_software",
+  "scope": "PMAA identification and residue linkage candidate inference with evidence-grounded LLM assistance",
+  "llm_extension": {
+    "contract_file": "04_LLM接口契约与验收用例.json",
+    "contract_version": "0.1.0",
+    "optional_result_fields": ["llm_assessment_id", "llm_validation_status", "llm_review_decision"],
+    "direct_overwrite_of_measurements_or_decision": false,
+    "fallback_to_rule_results": true
+  },
+  "notes": [
+    "本文件是开发契约和测试规格，尚不是实现好的分析程序。",
+    "本项目拟上传EI汇总表尚未接收；没有对其实际内容进行验收。",
+    "规则映射不代表每个化学实体都已有实测参考谱。",
+    "所有相似度仅为匹配分数；无独立概率校准时不得显示正确概率。"
+  ],
+  "states": {
+    "qc_status": ["passed", "warning", "failed", "not_assessed"],
+    "derivative_identity_level": ["confirmed", "probable", "candidate", "unknown"],
+    "residue_mapping_level": ["resolved", "ambiguous", "unsupported"],
+    "quantification_level": ["calibrated_molar", "semiquantitative", "area_only", "unavailable"],
+    "review_status": ["automated", "human_reviewed"]
+  },
+  "reference_record_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "PMAA Reference Record",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["record_id", "derivative_name_raw", "parent_sugar", "ring_form", "o_methyl_positions", "o_acetyl_positions", "nitrogen_modifications", "reduction_label", "evidence_type", "spectrum_completeness", "ions", "source", "method", "review_status"],
+    "properties": {
+      "record_id": {"type": "string", "minLength": 1},
+      "derivative_name_raw": {"type": "string", "minLength": 1},
+      "parent_sugar": {"type": ["string", "null"]},
+      "ring_form": {"enum": ["p", "f", "unknown", null]},
+      "o_methyl_positions": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 9}},
+      "o_acetyl_positions": {"type": ["array", "null"], "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 9}},
+      "nitrogen_modifications": {"type": "array", "items": {"type": "string"}},
+      "reduction_label": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["anomeric_reduction", "carboxyl_reduction", "methylation_reagent", "label_positions"],
+        "properties": {
+          "anomeric_reduction": {"enum": ["NaBD4", "NaBH4", "4-MMB", "other", "unknown"]},
+          "carboxyl_reduction": {"enum": ["none", "NaBD4_activated", "NaBH4_activated", "other", "unknown"]},
+          "methylation_reagent": {"enum": ["CH3I", "CD3I", "other", "unknown"]},
+          "label_positions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["atom_position", "isotope", "count"],
+              "properties": {
+                "atom_position": {"type": "string"},
+                "isotope": {"type": "string"},
+                "count": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        }
+      },
+      "evidence_type": {"enum": ["qualitative_ion_list", "numeric_spectrum"]},
+      "spectrum_completeness": {"enum": ["full_acquired_range", "selected_ions", "unknown"]},
+      "ions": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mz", "observation", "relative_intensity", "intensity_class", "source_cell"],
+          "properties": {
+            "mz": {"type": "number", "exclusiveMinimum": 0},
+            "observation": {"enum": ["present", "not_detected", "not_reported"]},
+            "relative_intensity": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+            "intensity_class": {"enum": ["reported_gt20pct", "reported_present", "numeric", "unknown"]},
+            "source_cell": {"type": ["string", "null"]}
+          }
+        }
+      },
+      "source": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url", "file_sha256", "locator", "access_depth", "evidence_tier", "redistribution_status"],
+        "properties": {
+          "title": {"type": "string"},
+          "url": {"type": ["string", "null"], "format": "uri"},
+          "file_sha256": {"type": ["string", "null"], "pattern": "^[a-fA-F0-9]{64}$"},
+          "locator": {"type": "string"},
+          "access_depth": {"enum": ["local_raw", "full_text", "database_record", "abstract_only", "unknown"]},
+          "evidence_tier": {"enum": ["E1", "E2", "E3", "E4", "unreviewed"]},
+          "redistribution_status": {"enum": ["permitted", "restricted", "unknown"]}
+        }
+      },
+      "method": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["method_id", "ei_energy_ev", "scan_range_mz", "retention"],
+        "properties": {
+          "method_id": {"type": ["string", "null"]},
+          "ei_energy_ev": {"type": ["number", "null"], "exclusiveMinimum": 0},
+          "scan_range_mz": {
+            "type": ["array", "null"],
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {"type": "number", "exclusiveMinimum": 0}
+          },
+          "retention": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["kind", "value", "unit", "method_id", "reference_identity", "algorithm"],
+            "properties": {
+              "kind": {"enum": ["RT", "RRT", "RI"]},
+              "value": {"type": "number", "minimum": 0},
+              "unit": {"enum": ["min", "s", "dimensionless", "index"]},
+              "method_id": {"type": "string"},
+              "reference_identity": {"type": ["string", "null"]},
+              "algorithm": {"type": ["string", "null"]}
+            },
+            "allOf": [
+              {"if": {"properties": {"kind": {"const": "RT"}}}, "then": {"properties": {"unit": {"enum": ["min", "s"]}}}},
+              {"if": {"properties": {"kind": {"const": "RRT"}}}, "then": {"properties": {"unit": {"const": "dimensionless"}, "reference_identity": {"type": "string", "minLength": 1}}}},
+              {"if": {"properties": {"kind": {"const": "RI"}}}, "then": {"properties": {"unit": {"const": "index"}, "reference_identity": {"type": "string", "minLength": 1}, "algorithm": {"type": "string", "minLength": 1}}}}
+            ]
+          }
+        }
+      },
+      "review_status": {"enum": ["unreviewed", "quarantined", "reference_only", "locally_validated"]}
+    },
+    "allOf": [
+      {
+        "if": {"properties": {"evidence_type": {"const": "qualitative_ion_list"}}},
+        "then": {
+          "properties": {
+            "ions": {"items": {"properties": {"relative_intensity": {"type": "null"}}}}
+          }
+        }
+      },
+      {
+        "if": {"properties": {"evidence_type": {"const": "numeric_spectrum"}}},
+        "then": {
+          "properties": {
+            "ions": {
+              "items": {
+                "if": {"properties": {"observation": {"const": "present"}}},
+                "then": {"properties": {"relative_intensity": {"type": "number"}, "intensity_class": {"const": "numeric"}}}
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "semantic_checks_beyond_json_schema": [
+    "o_methyl_positions与o_acetyl_positions不能重叠；范围按骨架和修饰校验。",
+    "同一谱内mz记录不得重复；扫描范围下限必须小于上限。",
+    "retention.method_id必须与对应方法版本及参照物实际记录一致。",
+    "RRT值不跨方法或参照物直接比较；方法转移需桥接验证。",
+    "不得把缺失标签或EI能量自动填为最常见值。",
+    "numeric_spectrum且selected_ions不等于完整谱，不允许直接满足确认门。",
+    "not_detected需要实际扫描覆盖和可用检测阈值；无此依据降为not_reported。",
+    "氨基糖必须先解释N修饰，不允许仅按中性糖U集合运行。",
+    "来源糖种/环型标签不是未知样本环型已确认的证据。",
+    "review_status=locally_validated必须有外部存储的标准/重复验证记录，不能只凭用户选项。"
+  ],
+  "mapping_frameworks": [
+    {"id": "aldohexopyranose", "anomeric_position": 1, "ring_closure_position": 5, "available_positions": [2, 3, 4, 6]},
+    {"id": "aldohexofuranose", "anomeric_position": 1, "ring_closure_position": 4, "available_positions": [2, 3, 5, 6]},
+    {"id": "aldopentopyranose", "anomeric_position": 1, "ring_closure_position": 5, "available_positions": [2, 3, 4]},
+    {"id": "aldopentofuranose", "anomeric_position": 1, "ring_closure_position": 4, "available_positions": [2, 3, 5]},
+    {"id": "six_deoxy_aldohexopyranose", "anomeric_position": 1, "ring_closure_position": 5, "available_positions": [2, 3, 4]}
+  ],
+  "mapping_preconditions": [
+    "充分甲基化；无未建模的O/N修饰。",
+    "糖骨架和标记路线在当前方法支持范围。",
+    "若环型未知，对所有相容框架分别生成候选。",
+    "甲基化位置是原游离OH位置；环氧对应位置不是原受体连接位。"
+  ],
+  "hexopyranose_mapping_cases": [
+    {"methyl": [2,3,4,6], "linkage": [], "acetyl": [1,5]},
+    {"methyl": [3,4,6], "linkage": [2], "acetyl": [1,2,5]},
+    {"methyl": [2,4,6], "linkage": [3], "acetyl": [1,3,5]},
+    {"methyl": [2,3,6], "linkage": [4], "acetyl": [1,4,5]},
+    {"methyl": [2,3,4], "linkage": [6], "acetyl": [1,5,6]},
+    {"methyl": [4,6], "linkage": [2,3], "acetyl": [1,2,3,5]},
+    {"methyl": [3,6], "linkage": [2,4], "acetyl": [1,2,4,5]},
+    {"methyl": [3,4], "linkage": [2,6], "acetyl": [1,2,5,6]},
+    {"methyl": [2,6], "linkage": [3,4], "acetyl": [1,3,4,5]},
+    {"methyl": [2,4], "linkage": [3,6], "acetyl": [1,3,5,6]},
+    {"methyl": [2,3], "linkage": [4,6], "acetyl": [1,4,5,6]},
+    {"methyl": [6], "linkage": [2,3,4], "acetyl": [1,2,3,4,5]},
+    {"methyl": [4], "linkage": [2,3,6], "acetyl": [1,2,3,5,6]},
+    {"methyl": [3], "linkage": [2,4,6], "acetyl": [1,2,4,5,6]},
+    {"methyl": [2], "linkage": [3,4,6], "acetyl": [1,3,4,5,6]},
+    {"methyl": [], "linkage": [2,3,4,6], "acetyl": [1,2,3,4,5,6], "requires_artifact_review": true}
+  ],
+  "result_contract": {
+    "required_fields": [
+      "analysis_id", "component_id", "input_hash", "method_version", "library_version", "rule_version",
+      "qc_status", "derivative_identity_level", "residue_mapping_level", "quantification_level", "review_status",
+      "candidate_derivatives", "candidate_residues", "positive_evidence", "conflicts", "missing_evidence",
+      "match_scores", "quantification", "next_discriminating_evidence"
+    ],
+    "quantification_required_fields": ["mode", "detector", "integration_method", "calibration_id", "value", "unit", "denominator_definition", "below_loq", "unresolved_group_id"],
+    "formal_report_blockers": ["qc_status=failed", "unsupported_method_scope", "missing_required_audit_trail"],
+    "formal_report_notes": [
+      "候选/歧义结果可以进入真实标明局限的审核报告，不得伪装为确认。",
+      "qc_status=failed时仅可导出带失败标识的研究草稿。",
+      "未校准面积可以报告，但不能使用calibrated_molar标签。"
+    ]
+  },
+  "acceptance_cases": [
+    {"id": "A01", "name": "定性符号不是强度", "input": {"evidence_type": "qualitative_ion_list", "raw_cells": ["87+", "118红色+", "233+"]}, "expected": {"numeric_intensities_generated": false, "cosine_matching_enabled": false, "maximum_identity_level": "candidate"}},
+    {"id": "A02", "name": "未列离子不是未检出", "input": {"listed_mz": [87,118], "unlisted_mz": 233, "scan_coverage_known": false}, "expected": {"unlisted_observation": "not_reported", "hard_exclusion_allowed": false}},
+    {"id": "A03", "name": "Hexp位置补集", "input": {"framework": "aldohexopyranose", "methyl": [2,3,6]}, "expected": {"linkage": [4], "acetyl": [1,4,5], "alpha_beta": null, "d_l": null}},
+    {"id": "A04", "name": "己糖环型来源歧义", "input": {"parent_skeleton_known": true, "ring_form": "unknown", "methyl": [2,3,6], "acetyl": [1,4,5]}, "expected": {"candidate_mappings": ["4-Hexp", "5-Hexf"], "residue_mapping_level": "ambiguous", "second_gc_column_guarantees_resolution": false}},
+    {"id": "A05", "name": "4-Arap与5-Araf同一PMAA", "input": {"parent_sugar": "Ara", "methyl": [2,3], "acetyl": [1,4,5], "derivative_identity_level": "confirmed", "ring_evidence": null}, "expected": {"candidate_mappings": ["4-Arap", "5-Araf"], "residue_mapping_level": "ambiguous", "derivative_identity_level": "confirmed"}},
+    {"id": "A06", "name": "普通Hexp错误C5甲基", "input": {"framework": "aldohexopyranose", "methyl": [2,3,5,6]}, "expected": {"record_state": "quarantined", "error": "METHYL_POSITION_INCOMPATIBLE_WITH_FRAMEWORK"}},
+    {"id": "A07", "name": "6脱氧糖错误C6甲基", "input": {"framework": "six_deoxy_aldohexopyranose", "methyl": [2,3,4,6]}, "expected": {"record_state": "quarantined", "error": "METHYL_POSITION_INCOMPATIBLE_WITH_FRAMEWORK"}},
+    {"id": "A08", "name": "N甲基误列O甲基", "input": {"parent_sugar": "GlcNAc", "raw_o_methyl_positions": [2,3,4,6], "nitrogen_modifications_known": false}, "expected": {"neutral_mapping_allowed": false, "record_state": "quarantined"}},
+    {"id": "A09", "name": "标签未知不能跨库确认", "input": {"sample_reductant": "unknown", "reference_reductant": "NaBD4", "match_score": 0.99}, "expected": {"derivative_identity_level": "candidate", "error": "LABEL_UNKNOWN"}},
+    {"id": "A10", "name": "标签位移依原子来源", "input": {"C1_label_delta_D": 1, "fragment_retains_C1": false}, "expected": {"apply_uniform_plus_one": false}},
+    {"id": "A11", "name": "RRT量纲错误", "input": {"kind": "RRT", "value": 0.737, "unit": "min"}, "expected": {"schema_valid": false}},
+    {"id": "A12", "name": "跨柱保留不直接比较", "input": {"sample_method": "SP2380_method_A", "reference_method": "HP5ms_method_B", "bridge_validated": false}, "expected": {"retention_comparison": "incompatible", "hard_retention_exclusion_allowed": false}},
+    {"id": "A13", "name": "最高分不是概率", "input": {"top_scores": [0.93,0.929], "probability_calibration": null}, "expected": {"show_correct_probability": false, "retain_near_tie_candidates": true}},
+    {"id": "A14", "name": "相同EI共洗脱无法强拆", "input": {"same_ei": true, "same_elution_profile": true, "independent_discriminating_evidence": false}, "expected": {"component_status": "unresolved_group", "separate_quantification": false}},
+    {"id": "A15", "name": "等摩尔不同检测响应", "input": {"areas": [100,200], "molar_slopes": [1,2], "intercepts": [0,0]}, "expected": {"molar_percent": [50,50]}},
+    {"id": "A16", "name": "无校准不报准确mol%", "input": {"areas": [100,200], "calibration": null}, "expected": {"area_percent": [33.3333333333,66.6666666667], "quantification_level": "area_only", "calibrated_molar_allowed": false}},
+    {"id": "A17", "name": "组成未检出作软约束", "input": {"ei_candidate": "Gal", "composition_result": "not_detected", "composition_detection_limit_known": false}, "expected": {"candidate_removed": false, "warning": "COMPOSITION_CONFLICT"}},
+    {"id": "A18", "name": "QC失败保留候选冻结正式发布", "input": {"qc_status": "failed", "candidate_derivatives": ["example_candidate"]}, "expected": {"preserve_candidates": true, "formal_report_allowed": false, "labelled_draft_allowed": true}},
+    {"id": "A19", "name": "补充甲基化改变支化峰", "input": {"remethylation_change_exceeds_validated_repeatability": true}, "expected": {"methylation_qc_warning": true, "automatic_branching_conclusion_allowed": false}},
+    {"id": "A20", "name": "分装不是独立制备", "input": {"independent_methylations": 1, "post_methylation_aliquots": 4}, "expected": {"independent_preparation_count": 1}},
+    {"id": "A21", "name": "不同检测器校准不混用", "input": {"sample_detector": "EI_TIC", "calibration_detector": "FID"}, "expected": {"calibration_compatible": false, "calibrated_molar_allowed": false}},
+    {"id": "A22", "name": "同连接组成不输出唯一序列", "input": {"linkage_composition_only": true, "inter_residue_sequence_evidence": null}, "expected": {"unique_polymer_sequence_allowed": false}},
+    {"id": "A23", "name": "定性表未提供色谱", "input": {"evidence_type": "qualitative_ion_list", "chromatographic_time_series": null}, "expected": {"coelution_assessment": "not_assessed", "quantification_level": "unavailable"}},
+    {"id": "A24", "name": "真实标准不抹去原残基歧义", "input": {"same_method_standard_match": true, "same_derivative_multiple_origins": true, "orthogonal_ring_evidence": null}, "expected": {"derivative_identity_may_be_confirmed": true, "residue_mapping_level": "ambiguous"}}
+  ]
+}
